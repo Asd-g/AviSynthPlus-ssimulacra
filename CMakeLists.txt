@@ -92,7 +92,7 @@ if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
     if (NOT CMAKE_BUILD_TYPE)
         set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
     endif()
-    
+
     string(TOLOWER ${CMAKE_BUILD_TYPE} build_type)
     if (build_type STREQUAL debug)
         target_compile_definitions(ssimulacra PRIVATE DEBUG_BUILD)
@@ -109,32 +109,41 @@ if (UNIX)
     target_compile_options(ssimulacra PRIVATE $<$<CONFIG:RELEASE>:-ffunction-sections -s>)
 endif()
 
-if (NOT WIN32)
-    find_library(libjxl NAMES jxl PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib)
-    target_link_libraries(ssimulacra PRIVATE libavisynth.so)
-else()
-    find_library(libjxl NAMES jxl-static PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib)
-    target_link_libraries(ssimulacra PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../AviSynthPlus/build_x64/Output/c_api/AviSynth.lib")
-endif()
+find_library(libjxl NAMES
+    jxl
+    jxl-static
+    PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib
+)
 message(STATUS "avs_ssimulacra: find_library returned ${libjxl}")
+
+find_library(libavs NAMES avisynth PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../AviSynthPlus/build_x64/Output/c_api")
+message(STATUS "avs_ssimulacra: find_library returned ${libavs}")
 
 find_library(libhwy NAMES hwy PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib)
 message(STATUS "avs_ssimulacra: find_library returned ${libhwy}")
 
 target_link_libraries(ssimulacra PRIVATE
     ${libjxl}
+    ${libavs}
     ${libhwy}
 )
 
-if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
-    target_link_libraries(ssimulacra PRIVATE
-        ${CMAKE_CURRENT_BINARY_DIR}/ssimulacra_lib.lib
-        ${CMAKE_CURRENT_BINARY_DIR}/ssimulacra2_lib.lib
-    )
+if (WIN32)
+    if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
+        target_link_libraries(ssimulacra PRIVATE
+            ${CMAKE_CURRENT_BINARY_DIR}/ssimulacra_lib.lib
+            ${CMAKE_CURRENT_BINARY_DIR}/ssimulacra2_lib.lib
+        )
+    else()
+        target_link_libraries(ssimulacra PRIVATE
+            ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ssimulacra_lib.lib
+            ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ssimulacra2_lib.lib
+        )
+    endif()
 else()
     target_link_libraries(ssimulacra PRIVATE
-        ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ssimulacra_lib.lib
-        ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ssimulacra2_lib.lib
+            ${CMAKE_CURRENT_BINARY_DIR}/libssimulacra_lib.a
+            ${CMAKE_CURRENT_BINARY_DIR}/libssimulacra2_lib.a
     )
 endif()
 
