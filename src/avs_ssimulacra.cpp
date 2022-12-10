@@ -157,7 +157,8 @@ static AVS_Value AVSC_CC Create_ssimulacra(AVS_ScriptEnvironment* env, AVS_Value
 
     if (!avs_is_planar_rgb(&fi->vi))
         v = avs_new_value_error("ssimulacra: the clip must be in RGB planar format (w/o alpha).");
-
+    if (avs_bits_per_component(&fi->vi) != 8 && avs_bits_per_component(&fi->vi) != 16 && avs_bits_per_component(&fi->vi) != 32)
+        v = avs_new_value_error("ssimulacra: the clip bit depth must be 8, 16, or 32.");
     if (!avs_defined(v))
     {
         if (fi->vi.height < 8 || fi->vi.width < 8)
@@ -236,13 +237,13 @@ static AVS_Value AVSC_CC Create_ssimulacra(AVS_ScriptEnvironment* env, AVS_Value
 
             d->ref.SetSize(fi->vi.width, fi->vi.height);
             d->dist.SetSize(fi->vi.width, fi->vi.height);
+
+            v = avs_new_value_clip(clip);
+
+            fi->user_data = reinterpret_cast<void*>(d);
+            fi->set_cache_hints = set_cache_hints_ssimulacra;
+            fi->free_filter = free_ssimulacra;
         }
-
-        v = avs_new_value_clip(clip);
-
-        fi->user_data = reinterpret_cast<void*>(d);
-        fi->set_cache_hints = set_cache_hints_ssimulacra;
-        fi->free_filter = free_ssimulacra;
     }
 
     avs_release_clip(clip);
