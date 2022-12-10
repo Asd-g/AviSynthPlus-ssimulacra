@@ -69,11 +69,7 @@ message(STATUS "ssimulacra2_lib: find_library returned ${libhwy}")
 ###
 project(libssimulacra LANGUAGES CXX)
 
-set(sources
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/avs_ssimulacra.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/avs_ssimulacra2.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin.cpp
-)
+set(sources ${CMAKE_CURRENT_SOURCE_DIR}/src/avs_ssimulacra.cpp)
 
 if (WIN32)
     set(sources ${sources} ${CMAKE_CURRENT_BINARY_DIR}/avs_ssimulacra.rc)
@@ -88,7 +84,6 @@ else()
 endif()
 
 target_include_directories(ssimulacra PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/libjxl
     ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/include
 )
@@ -97,7 +92,7 @@ if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
     if (NOT CMAKE_BUILD_TYPE)
         set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
     endif()
-
+    
     string(TOLOWER ${CMAKE_BUILD_TYPE} build_type)
     if (build_type STREQUAL debug)
         target_compile_definitions(ssimulacra PRIVATE DEBUG_BUILD)

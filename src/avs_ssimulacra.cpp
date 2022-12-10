@@ -1,8 +1,9 @@
-#include "avs_ssimulacra.h"
+#include "avisynth_c.h"
 #include "lib/extras/codec.h"
 #include "lib/jxl/color_management.h"
 #include "lib/jxl/enc_color_management.h"
 #include "tools/ssimulacra.h"
+#include "tools/ssimulacra2.h"
 
 struct ssimulacra_data
 {
@@ -14,7 +15,7 @@ struct ssimulacra_data
     void(*fill)(jxl::CodecInOut& __restrict ref, jxl::CodecInOut& __restrict dist, AVS_VideoFrame* src1, AVS_VideoFrame* src2) noexcept;
 };
 
-template <typename T>
+template <typename T, int feature>
 static void fill_image_ssimulacra(jxl::CodecInOut& __restrict ref, jxl::CodecInOut& __restrict dist, AVS_VideoFrame* src1, AVS_VideoFrame* src2) noexcept
 {
     const size_t stride1{ avs_get_pitch(src1) / sizeof(T) };
@@ -44,11 +45,8 @@ static void fill_image_ssimulacra(jxl::CodecInOut& __restrict ref, jxl::CodecInO
             }
         }
 
-        ref.SetFromImage(std::move(jxl::ConvertToFloat(tmp1)), ref.metadata.m.color_encoding);
-        dist.SetFromImage(std::move(jxl::ConvertToFloat(tmp2)), dist.metadata.m.color_encoding);
-
-        ref.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
-        dist.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
+        ref.SetFromImage(std::move(jxl::ConvertToFloat(tmp1)), jxl::ColorEncoding::SRGB(false));
+        dist.SetFromImage(std::move(jxl::ConvertToFloat(tmp2)), jxl::ColorEncoding::SRGB(false));
     }
     else if constexpr (std::is_same_v<T, uint16_t>)
     {
@@ -70,11 +68,8 @@ static void fill_image_ssimulacra(jxl::CodecInOut& __restrict ref, jxl::CodecInO
             }
         }
 
-        ref.SetFromImage(std::move(jxl::ConvertToFloat(tmp1)), ref.metadata.m.color_encoding);
-        dist.SetFromImage(std::move(jxl::ConvertToFloat(tmp2)), dist.metadata.m.color_encoding);
-
-        ref.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
-        dist.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
+        ref.SetFromImage(std::move(jxl::ConvertToFloat(tmp1)), jxl::ColorEncoding::SRGB(false));
+        dist.SetFromImage(std::move(jxl::ConvertToFloat(tmp2)), jxl::ColorEncoding::SRGB(false));
     }
     else
     {
@@ -96,14 +91,12 @@ static void fill_image_ssimulacra(jxl::CodecInOut& __restrict ref, jxl::CodecInO
             }
         }
 
-        ref.SetFromImage(std::move(tmp1), ref.metadata.m.color_encoding);
-        dist.SetFromImage(std::move(tmp2), dist.metadata.m.color_encoding);
-
-        ref.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
-        dist.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
+        ref.SetFromImage(std::move(tmp1), jxl::ColorEncoding::SRGB(false));
+        dist.SetFromImage(std::move(tmp2), jxl::ColorEncoding::SRGB(false));
     }
 }
 
+template <int feature>
 static AVS_VideoFrame* AVSC_CC get_frame_ssimulacra(AVS_FilterInfo* fi, int n)
 {
     ssimulacra_data* d{ static_cast<ssimulacra_data*>(fi->user_data) };
@@ -116,10 +109,22 @@ static AVS_VideoFrame* AVSC_CC get_frame_ssimulacra(AVS_FilterInfo* fi, int n)
 
     d->fill(d->ref, d->dist, src1, src2);
 
-    ssimulacra::Ssimulacra ssimulacra_{ ssimulacra::ComputeDiff(*d->ref.Main().color(), *d->dist.Main().color(), d->simple) };
-
     avs_make_writable(fi->env, &src1);
-    avs_prop_set_float(fi->env, avs_get_frame_props_rw(fi->env, src1), "_Framessimulacra", ssimulacra_.Score(), 0);
+    AVS_Map* props{ avs_get_frame_props_rw(fi->env, src1) };
+
+    if constexpr (feature)
+    {
+        Msssim msssim{ ComputeSSIMULACRA2(d->ref.Main(), d->dist.Main()) };
+        avs_prop_set_float(fi->env, props, "SSIMULACRA2", msssim.Score(), 0);
+    }
+    if constexpr (!feature || feature == 2)
+    {
+        d->ref.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
+        d->dist.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
+
+        ssimulacra::Ssimulacra ssimulacra_{ ssimulacra::ComputeDiff(*d->ref.Main().color(), *d->dist.Main().color(), d->simple) };
+        avs_prop_set_float(fi->env, props, "SSIMULACRA", ssimulacra_.Score(), 0);
+    }
 
     avs_release_video_frame(src2);
 
@@ -139,9 +144,9 @@ static int AVSC_CC set_cache_hints_ssimulacra(AVS_FilterInfo* fi, int cachehints
     return cachehints == AVS_CACHE_GET_MTMODE ? 2 : 0;
 }
 
-AVS_Value AVSC_CC Create_ssimulacra(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
+static AVS_Value AVSC_CC Create_ssimulacra(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
 {
-    enum { Clip, Clip1, Simple, Linput };
+    enum { Clip, Clip1, Simple, Feature };
 
     ssimulacra_data* d{ new ssimulacra_data() };
 
@@ -182,27 +187,60 @@ AVS_Value AVSC_CC Create_ssimulacra(AVS_ScriptEnvironment* env, AVS_Value args, 
     if (!avs_defined(v))
     {
         d->simple = avs_defined(avs_array_elt(args, Simple)) ? avs_as_bool(avs_array_elt(args, Simple)) : 0;
-        const int linput{ avs_defined(avs_array_elt(args, Linput)) ? avs_as_bool(avs_array_elt(args, Linput)) : 0 };
+        const int feature{ avs_defined(avs_array_elt(args, Feature)) ? avs_as_bool(avs_array_elt(args, Feature)) : 0 };
 
-        switch (avs_component_size(&fi->vi))
+        if (feature < 0 || feature > 2)
+            v = avs_new_value_error("ssimulacra: feature must be between 0..2.");
+
+        if (!avs_defined(v))
         {
-            case 1: d->fill = fill_image_ssimulacra<uint8_t>; break;
-            case 2: d->fill = fill_image_ssimulacra<uint16_t>; break;
-            default: d->fill = fill_image_ssimulacra<float>; break;
+            switch (feature)
+            {
+                case 0:
+                {
+                    switch (avs_component_size(&fi->vi))
+                    {
+                        case 1: d->fill = fill_image_ssimulacra<uint8_t, 0>; break;
+                        case 2: d->fill = fill_image_ssimulacra<uint16_t, 0>; break;
+                        default: d->fill = fill_image_ssimulacra<float, 0>; break;
+                    }
+
+                    fi->get_frame = get_frame_ssimulacra<0>;
+                    break;
+                }
+                case 1:
+                {
+                    switch (avs_component_size(&fi->vi))
+                    {
+                        case 1: d->fill = fill_image_ssimulacra<uint8_t, 1>; break;
+                        case 2: d->fill = fill_image_ssimulacra<uint16_t, 1>; break;
+                        default: d->fill = fill_image_ssimulacra<float, 1>; break;
+                    }
+
+                    fi->get_frame = get_frame_ssimulacra<1>;
+                    break;
+                }
+                default:
+                {
+                    switch (avs_component_size(&fi->vi))
+                    {
+                        case 1: d->fill = fill_image_ssimulacra<uint8_t, 2>; break;
+                        case 2: d->fill = fill_image_ssimulacra<uint16_t, 2>; break;
+                        default: d->fill = fill_image_ssimulacra<float, 2>; break;
+                    }
+
+                    fi->get_frame = get_frame_ssimulacra<2>;
+                    break;
+                }
+            }
+
+            d->ref.SetSize(fi->vi.width, fi->vi.height);
+            d->dist.SetSize(fi->vi.width, fi->vi.height);
         }
 
-        d->ref.SetSize(fi->vi.width, fi->vi.height);
-        d->dist.SetSize(fi->vi.width, fi->vi.height);
-
-        d->ref.metadata.m.color_encoding = jxl::ColorEncoding::SRGB(false);
-        d->dist.metadata.m.color_encoding = jxl::ColorEncoding::SRGB(false);
-    }
-    if (!avs_defined(v))
-    {
         v = avs_new_value_clip(clip);
 
         fi->user_data = reinterpret_cast<void*>(d);
-        fi->get_frame = get_frame_ssimulacra;
         fi->set_cache_hints = set_cache_hints_ssimulacra;
         fi->free_filter = free_ssimulacra;
     }
@@ -210,4 +248,10 @@ AVS_Value AVSC_CC Create_ssimulacra(AVS_ScriptEnvironment* env, AVS_Value args, 
     avs_release_clip(clip);
 
     return v;
+}
+
+static const char* AVSC_CC avisynth_c_plugin_init(AVS_ScriptEnvironment* env)
+{
+    avs_add_function(env, "ssimulacra", "cc[simple]b[feature]i", Create_ssimulacra, 0);
+    return "ssimulacra";
 }
