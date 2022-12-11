@@ -15,7 +15,7 @@ struct ssimulacra_data
     void(*fill)(jxl::CodecInOut& __restrict ref, jxl::CodecInOut& __restrict dist, AVS_VideoFrame* src1, AVS_VideoFrame* src2) noexcept;
 };
 
-template <typename T, int feature>
+template <typename T>
 static void fill_image_ssimulacra(jxl::CodecInOut& __restrict ref, jxl::CodecInOut& __restrict dist, AVS_VideoFrame* src1, AVS_VideoFrame* src2) noexcept
 {
     const size_t stride1{ avs_get_pitch(src1) / sizeof(T) };
@@ -195,44 +195,18 @@ static AVS_Value AVSC_CC Create_ssimulacra(AVS_ScriptEnvironment* env, AVS_Value
 
         if (!avs_defined(v))
         {
+            switch (avs_component_size(&fi->vi))
+            {
+                case 1: d->fill = fill_image_ssimulacra<uint8_t>; break;
+                case 2: d->fill = fill_image_ssimulacra<uint16_t>; break;
+                default: d->fill = fill_image_ssimulacra<float>; break;
+            }
+
             switch (feature)
             {
-                case 0:
-                {
-                    switch (avs_component_size(&fi->vi))
-                    {
-                        case 1: d->fill = fill_image_ssimulacra<uint8_t, 0>; break;
-                        case 2: d->fill = fill_image_ssimulacra<uint16_t, 0>; break;
-                        default: d->fill = fill_image_ssimulacra<float, 0>; break;
-                    }
-
-                    fi->get_frame = get_frame_ssimulacra<0>;
-                    break;
-                }
-                case 1:
-                {
-                    switch (avs_component_size(&fi->vi))
-                    {
-                        case 1: d->fill = fill_image_ssimulacra<uint8_t, 1>; break;
-                        case 2: d->fill = fill_image_ssimulacra<uint16_t, 1>; break;
-                        default: d->fill = fill_image_ssimulacra<float, 1>; break;
-                    }
-
-                    fi->get_frame = get_frame_ssimulacra<1>;
-                    break;
-                }
-                default:
-                {
-                    switch (avs_component_size(&fi->vi))
-                    {
-                        case 1: d->fill = fill_image_ssimulacra<uint8_t, 2>; break;
-                        case 2: d->fill = fill_image_ssimulacra<uint16_t, 2>; break;
-                        default: d->fill = fill_image_ssimulacra<float, 2>; break;
-                    }
-
-                    fi->get_frame = get_frame_ssimulacra<2>;
-                    break;
-                }
+                case 0: fi->get_frame = get_frame_ssimulacra<0>; break;
+                case 1: fi->get_frame = get_frame_ssimulacra<1>; break;
+                default: fi->get_frame = get_frame_ssimulacra<2>; break;
             }
 
             d->ref.SetSize(fi->vi.width, fi->vi.height);
