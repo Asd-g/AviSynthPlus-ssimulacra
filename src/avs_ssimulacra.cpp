@@ -119,8 +119,8 @@ static AVS_VideoFrame* AVSC_CC get_frame_ssimulacra(AVS_FilterInfo* fi, int n)
     }
     if constexpr (!feature || feature == 2)
     {
-        d->ref.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
-        d->dist.TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
+        d->ref.Main().TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
+        d->dist.Main().TransformTo(jxl::ColorEncoding::LinearSRGB(false), jxl::GetJxlCms());
 
         ssimulacra::Ssimulacra ssimulacra_{ ssimulacra::ComputeDiff(*d->ref.Main().color(), *d->dist.Main().color(), d->simple) };
         avs_prop_set_float(fi->env, props, "SSIMULACRA", ssimulacra_.Score(), 0);
@@ -151,81 +151,80 @@ static AVS_Value AVSC_CC Create_ssimulacra(AVS_ScriptEnvironment* env, AVS_Value
     ssimulacra_data* d{ new ssimulacra_data() };
 
     AVS_FilterInfo* fi;
-    AVS_Value v{ avs_void };
-
     AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1) };
 
+    const auto set_error{ [&](const char* error)
+        {
+            avs_release_clip(clip);
+
+            return avs_new_value_error(error);
+        }
+    };
+
+    if (!avs_check_version(env, 9))
+    {
+        if (avs_check_version(env, 10))
+        {
+            if (avs_get_env_property(env, AVS_AEP_INTERFACE_BUGFIX) < 2)
+                return set_error("ssimulacra: AviSynth+ version must be r3688 or later.");
+        }
+    }
+    else
+        return set_error("ssimulacra: AviSynth+ version must be r3688 or later.");
+
     if (!avs_is_planar_rgb(&fi->vi))
-        v = avs_new_value_error("ssimulacra: the clip must be in RGB planar format (w/o alpha).");
+        return set_error("ssimulacra: the clip must be in RGB planar format (w/o alpha).");
     if (avs_bits_per_component(&fi->vi) != 8 && avs_bits_per_component(&fi->vi) != 16 && avs_bits_per_component(&fi->vi) != 32)
-        v = avs_new_value_error("ssimulacra: the clip bit depth must be 8, 16, or 32.");
-    if (!avs_defined(v))
+        return set_error("ssimulacra: the clip bit depth must be 8, 16, or 32.");
+    if (fi->vi.height < 8 || fi->vi.width < 8)
+        return set_error("ssimulacra: minimum image size is 8x8 pixels");
+
+    d->clip1 = avs_take_clip(avs_array_elt(args, Clip1), env);
+
+    const AVS_VideoInfo* vi1{ avs_get_video_info(d->clip1) };
+
+    if (!avs_is_same_colorspace(&fi->vi, vi1))
+        return set_error("ssimulacra: the clips format doesn't match");
+    if (vi1->num_frames != fi->vi.num_frames)
+        return set_error("ssimulacra: the clips number of frames doesn't match");
+    if ((vi1->width != fi->vi.width) || (vi1->height != fi->vi.height))
+        return set_error("ssimulacra: the clips dimension doesn't match");
+
+    d->simple = avs_defined(avs_array_elt(args, Simple)) ? avs_as_bool(avs_array_elt(args, Simple)) : 0;
+    const int feature{ avs_defined(avs_array_elt(args, Feature)) ? avs_as_bool(avs_array_elt(args, Feature)) : 0 };
+
+    if (feature < 0 || feature > 2)
+        return set_error("ssimulacra: feature must be between 0..2.");
+
+    switch (avs_component_size(&fi->vi))
     {
-        if (fi->vi.height < 8 || fi->vi.width < 8)
-            v = avs_new_value_error("ssimulacra: minimum image size is 8x8 pixels");
+        case 1: d->fill = fill_image_ssimulacra<uint8_t>; break;
+        case 2: d->fill = fill_image_ssimulacra<uint16_t>; break;
+        default: d->fill = fill_image_ssimulacra<float>; break;
     }
-    if (!avs_defined(v))
+
+    switch (feature)
     {
-        d->clip1 = avs_take_clip(avs_array_elt(args, Clip1), env);
-
-        const AVS_VideoInfo* vi1{ avs_get_video_info(d->clip1) };
-
-        if (!avs_is_same_colorspace(&fi->vi, vi1))
-            v = avs_new_value_error("ssimulacra: the clips format doesn't match");
-
-        if (!avs_defined(v))
-        {
-            if (vi1->num_frames != fi->vi.num_frames)
-                v = avs_new_value_error("ssimulacra: the clips number of frames doesn't match");
-
-            if (!avs_defined(v))
-            {
-                if ((vi1->width != fi->vi.width) || (vi1->height != fi->vi.height))
-                    v = avs_new_value_error("ssimulacra: the clips dimension doesn't match");
-            }
-        }
+        case 0: fi->get_frame = get_frame_ssimulacra<0>; break;
+        case 1: fi->get_frame = get_frame_ssimulacra<1>; break;
+        default: fi->get_frame = get_frame_ssimulacra<2>; break;
     }
-    if (!avs_defined(v))
-    {
-        d->simple = avs_defined(avs_array_elt(args, Simple)) ? avs_as_bool(avs_array_elt(args, Simple)) : 0;
-        const int feature{ avs_defined(avs_array_elt(args, Feature)) ? avs_as_bool(avs_array_elt(args, Feature)) : 0 };
 
-        if (feature < 0 || feature > 2)
-            v = avs_new_value_error("ssimulacra: feature must be between 0..2.");
+    d->ref.SetSize(fi->vi.width, fi->vi.height);
+    d->dist.SetSize(fi->vi.width, fi->vi.height);
 
-        if (!avs_defined(v))
-        {
-            switch (avs_component_size(&fi->vi))
-            {
-                case 1: d->fill = fill_image_ssimulacra<uint8_t>; break;
-                case 2: d->fill = fill_image_ssimulacra<uint16_t>; break;
-                default: d->fill = fill_image_ssimulacra<float>; break;
-            }
+    AVS_Value v{ avs_new_value_clip(clip) };
 
-            switch (feature)
-            {
-                case 0: fi->get_frame = get_frame_ssimulacra<0>; break;
-                case 1: fi->get_frame = get_frame_ssimulacra<1>; break;
-                default: fi->get_frame = get_frame_ssimulacra<2>; break;
-            }
-
-            d->ref.SetSize(fi->vi.width, fi->vi.height);
-            d->dist.SetSize(fi->vi.width, fi->vi.height);
-
-            v = avs_new_value_clip(clip);
-
-            fi->user_data = reinterpret_cast<void*>(d);
-            fi->set_cache_hints = set_cache_hints_ssimulacra;
-            fi->free_filter = free_ssimulacra;
-        }
-    }
+    fi->user_data = reinterpret_cast<void*>(d);
+    fi->set_cache_hints = set_cache_hints_ssimulacra;
+    fi->free_filter = free_ssimulacra;
 
     avs_release_clip(clip);
 
     return v;
 }
 
-static const char* AVSC_CC avisynth_c_plugin_init(AVS_ScriptEnvironment* env)
+const char* AVSC_CC avisynth_c_plugin_init(AVS_ScriptEnvironment* env)
 {
     avs_add_function(env, "ssimulacra", "cc[simple]b[feature]i", Create_ssimulacra, 0);
     return "ssimulacra";
