@@ -1,72 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(jxlssimulacra LANGUAGES CXX)
-
-###
-add_library(ssimulacra_lib STATIC ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/tools/ssimulacra.cc)
-
-target_include_directories(ssimulacra_lib PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/libjxl
-    ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/include
-)
-
-if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
-    if (NOT CMAKE_BUILD_TYPE)
-        set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-    endif()
-
-    string(TOLOWER ${CMAKE_BUILD_TYPE} build_type)
-    if (build_type STREQUAL debug)
-        target_compile_definitions(ssimulacra_lib PRIVATE DEBUG_BUILD)
-    else (build_type STREQUAL release)
-        target_compile_definitions(ssimulacra_lib PRIVATE RELEASE_BUILD)
-    endif()
-endif()
-
-target_compile_features(ssimulacra_lib PRIVATE cxx_std_17)
-
-if (UNIX)
-    target_compile_options(ssimulacra_lib PRIVATE $<$<CONFIG:RELEASE>:-ffunction-sections -s>)
-endif()
-
-find_library(libhwy NAMES hwy PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib)
-message(STATUS "ssimulacra_lib: find_library returned ${libhwy}")
-
-
-###
-project(jxlssimulacra2 LANGUAGES CXX)
-
-add_library(ssimulacra2_lib STATIC ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/tools/ssimulacra2.cc)
-
-target_include_directories(ssimulacra2_lib PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/libjxl
-    ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/include
-)
-
-if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
-    if (NOT CMAKE_BUILD_TYPE)
-        set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-    endif()
-
-    string(TOLOWER ${CMAKE_BUILD_TYPE} build_type)
-    if (build_type STREQUAL debug)
-        target_compile_definitions(ssimulacra2_lib PRIVATE DEBUG_BUILD)
-    else (build_type STREQUAL release)
-        target_compile_definitions(ssimulacra2_lib PRIVATE RELEASE_BUILD)
-    endif()
-endif()
-
-target_compile_features(ssimulacra2_lib PRIVATE cxx_std_17)
-
-if (UNIX)
-    target_compile_options(ssimulacra2_lib PRIVATE $<$<CONFIG:RELEASE>:-ffunction-sections -s>)
-endif()
-
-find_library(libhwy NAMES hwy PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib)
-message(STATUS "ssimulacra2_lib: find_library returned ${libhwy}")
-
-
-###
 project(libssimulacra LANGUAGES CXX)
 
 set(sources ${CMAKE_CURRENT_SOURCE_DIR}/src/avs_ssimulacra.cpp)
@@ -75,7 +8,11 @@ if (WIN32)
     set(sources ${sources} ${CMAKE_CURRENT_BINARY_DIR}/avs_ssimulacra.rc)
 endif()
 
-add_library(ssimulacra SHARED ${sources})
+add_library(ssimulacra SHARED
+    ${sources}
+    ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/tools/ssimulacra.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/tools/ssimulacra2.cc
+)
 
 if (UNIX)
     target_include_directories(ssimulacra PRIVATE /usr/local/include/avisynth)
@@ -105,21 +42,15 @@ endif()
 
 target_compile_features(ssimulacra PRIVATE cxx_std_17)
 
-if (UNIX)
-    target_compile_options(ssimulacra PRIVATE $<$<CONFIG:RELEASE>:-ffunction-sections -s>)
-endif()
-
-find_library(libjxl NAMES
-    jxl
-    jxl-static
+find_library(libjxl
+    NAMES jxl jxl-static
     PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib
 )
+find_library(libavs NAMES avisynth PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../AviSynthPlus/build_x64_clang/Output/c_api")
+find_library(libhwy NAMES hwy PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib NO_DEFAULT_PATH)
+
 message(STATUS "avs_ssimulacra: find_library returned ${libjxl}")
-
-find_library(libavs NAMES avisynth PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../AviSynthPlus/build_x64/Output/c_api")
 message(STATUS "avs_ssimulacra: find_library returned ${libavs}")
-
-find_library(libhwy NAMES hwy PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib)
 message(STATUS "avs_ssimulacra: find_library returned ${libhwy}")
 
 target_link_libraries(ssimulacra PRIVATE
@@ -128,32 +59,15 @@ target_link_libraries(ssimulacra PRIVATE
     ${libhwy}
 )
 
-if (WIN32)
-    if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
-        target_link_libraries(ssimulacra PRIVATE
-            ${CMAKE_CURRENT_BINARY_DIR}/ssimulacra_lib.lib
-            ${CMAKE_CURRENT_BINARY_DIR}/ssimulacra2_lib.lib
-        )
-    else()
-        target_link_libraries(ssimulacra PRIVATE
-            ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ssimulacra_lib.lib
-            ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ssimulacra2_lib.lib
-        )
-    endif()
-else()
-    target_link_libraries(ssimulacra PRIVATE
-            ${CMAKE_CURRENT_BINARY_DIR}/libssimulacra_lib.a
-            ${CMAKE_CURRENT_BINARY_DIR}/libssimulacra2_lib.a
-    )
-endif()
-
-add_dependencies(ssimulacra ssimulacra_lib ssimulacra2_lib)
-
 if (CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
     target_link_libraries(ssimulacra PRIVATE
         libmmds
         svml_disp
     )
+endif()
+
+if (MINGW)
+    target_link_libraries(ssimulacra PRIVATE -static-libstdc++ -static-libgcc -s)
 endif()
 
 find_package (Git)
