@@ -45,8 +45,8 @@ static void fill_image_ssimulacra(jxl::CodecInOut& __restrict ref, jxl::CodecInO
             }
         }
 
-        ref.SetFromImage(std::move(jxl::ConvertToFloat(tmp1)), jxl::ColorEncoding::SRGB(false));
-        dist.SetFromImage(std::move(jxl::ConvertToFloat(tmp2)), jxl::ColorEncoding::SRGB(false));
+        ref.SetFromImage(jxl::ConvertToFloat(tmp1), jxl::ColorEncoding::SRGB(false));
+        dist.SetFromImage(jxl::ConvertToFloat(tmp2), jxl::ColorEncoding::SRGB(false));
     }
     else if constexpr (std::is_same_v<T, uint16_t>)
     {
@@ -68,8 +68,8 @@ static void fill_image_ssimulacra(jxl::CodecInOut& __restrict ref, jxl::CodecInO
             }
         }
 
-        ref.SetFromImage(std::move(jxl::ConvertToFloat(tmp1)), jxl::ColorEncoding::SRGB(false));
-        dist.SetFromImage(std::move(jxl::ConvertToFloat(tmp2)), jxl::ColorEncoding::SRGB(false));
+        ref.SetFromImage(jxl::ConvertToFloat(tmp1), jxl::ColorEncoding::SRGB(false));
+        dist.SetFromImage(jxl::ConvertToFloat(tmp2), jxl::ColorEncoding::SRGB(false));
     }
     else
     {
