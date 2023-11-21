@@ -16,8 +16,6 @@ add_library(ssimulacra SHARED
 
 if (UNIX)
     target_include_directories(ssimulacra PRIVATE /usr/local/include/avisynth)
-else()
-    target_include_directories(ssimulacra PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../AviSynthPlus/avs_core/include")
 endif()
 
 target_include_directories(ssimulacra PRIVATE
@@ -42,20 +40,22 @@ endif()
 
 target_compile_features(ssimulacra PRIVATE cxx_std_17)
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+    target_compile_options(ssimulacra PRIVATE "/fp:precise")
+endif()
+
 find_library(libjxl
     NAMES jxl jxl-static
     PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib
 )
-find_library(libavs NAMES avisynth PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../AviSynthPlus/build_x64_clang/Output/c_api")
 find_library(libhwy NAMES hwy PATHS ${CMAKE_CURRENT_SOURCE_DIR}/libjxl/jxl_install/lib NO_DEFAULT_PATH)
 
 message(STATUS "avs_ssimulacra: find_library returned ${libjxl}")
-message(STATUS "avs_ssimulacra: find_library returned ${libavs}")
 message(STATUS "avs_ssimulacra: find_library returned ${libhwy}")
 
 target_link_libraries(ssimulacra PRIVATE
     ${libjxl}
-    ${libavs}
+    avisynth
     ${libhwy}
 )
 
